@@ -19,6 +19,9 @@ export class CorvvsError extends Error {
 /**
  * Client-raised:
  *   ERR_UNREACHABLE       no engine answered — the only condition the CPU fallback covers
+ *   ERR_TIMEOUT           engine didn't respond within the configured timeout — distinct
+ *                          from ERR_UNREACHABLE precisely so it does NOT trigger the CPU
+ *                          fallback (a slow engine is not "no engine")
  *   ERR_VERSION_MISMATCH  engine and client are different major versions
  *   ERR_NO_FALLBACK       fallback needed but `kokoro-js` isn't installed
  *

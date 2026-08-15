@@ -10,6 +10,7 @@
 
 import { CorvvsError } from './errors.js';
 import { createFallback } from './fallback.js';
+import { splitSentences } from './split.js';
 
 const CLIENT_VERSION = '0.1.0';
 const DEFAULT_URL = 'http://127.0.0.1:8765';
@@ -40,11 +41,43 @@ export function corvvs(options = {}) {
   } = options;
 
   const base = url.replace(/\/+$/, '');
-  let fallbackEngine = null;   // lazily created — loading the CPU model is expensive
-  let versionChecked = false;
+  let fallbackPromise = null;      // cached promise, not resolved value — see speak()
+  let warnedMinorMismatch = false;
 
   function headers(extra) {
     return { ...extra, ...(key ? { Authorization: `Bearer ${key}` } : {}) };
+  }
+
+  /**
+   * Warns (once) or throws if the engine and client shipped from different releases.
+   * They're developed and versioned together in the same repo, so a mismatch means one
+   * of them was updated alone — usually a stale engine after `npm update`. Runs on
+   * every request via the X-Corvvs-Version response header rather than a separate call,
+   * so it's not limited to callers who happen to invoke health().
+   */
+  function checkVersion(engineVersion) {
+    if (!engineVersion) return; // talking to something pre-header, or not a CORVVS engine
+
+    const [engineMajor, engineMinor] = engineVersion.split('.');
+    const [clientMajor, clientMinor] = CLIENT_VERSION.split('.');
+
+    if (engineMajor !== clientMajor) {
+      // Deliberately not cached as "checked" — a real protocol incompatibility should
+      // keep surfacing on every request until someone fixes it, not go quiet after the
+      // first one.
+      throw new CorvvsError(
+        'ERR_VERSION_MISMATCH',
+        `engine ${engineVersion} and client ${CLIENT_VERSION} are different major versions — ` +
+        `the protocol is incompatible. Update whichever is behind.`,
+      );
+    }
+    if (engineMinor !== clientMinor && !warnedMinorMismatch) {
+      warnedMinorMismatch = true;
+      console.warn(
+        `[corvvs] engine ${engineVersion} / client ${CLIENT_VERSION} — minor version skew. ` +
+        `Probably fine, but update the engine if something behaves oddly.`,
+      );
+    }
   }
 
   async function request(path, init = {}) {
@@ -53,10 +86,18 @@ export function corvvs(options = {}) {
     try {
       response = await fetch(`${base}${path}`, { ...init, signal, headers: headers(init.headers) });
     } catch (cause) {
-      // Connection-level failure — the engine isn't running, isn't reachable, or timed
-      // out. This is the one case the fallback covers; see speak().
+      // AbortSignal.timeout() aborts with a TimeoutError specifically (distinct from a
+      // manually-aborted AbortError) — undici surfaces that name on the rejection. Only
+      // a genuine connection failure should trigger the CPU fallback in speak(); a slow
+      // engine that would've answered eventually should not be treated the same as no
+      // engine at all and demoted to something ~170x slower still.
+      if (cause?.name === 'TimeoutError') {
+        throw new CorvvsError('ERR_TIMEOUT', `engine at ${base} did not respond within ${timeout}ms`, { cause });
+      }
       throw new CorvvsError('ERR_UNREACHABLE', `could not reach the CORVVS engine at ${base}`, { cause });
     }
+
+    checkVersion(response.headers.get('x-corvvs-version'));
 
     if (!response.ok) {
       // A running-but-unhappy engine. Never falls back — a 401 or a 413 is a real
@@ -72,31 +113,33 @@ export function corvvs(options = {}) {
     return response;
   }
 
-  /**
-   * Warns once per instance if the engine and client shipped from different releases.
-   * They're developed and versioned together, so a mismatch means one of them was
-   * updated alone — usually a stale engine after `npm update`.
-   */
-  async function checkVersion(engineVersion) {
-    if (versionChecked) return;
-    versionChecked = true;
-
-    const [engineMajor, engineMinor] = engineVersion.split('.');
-    const [clientMajor, clientMinor] = CLIENT_VERSION.split('.');
-
-    if (engineMajor !== clientMajor) {
-      throw new CorvvsError(
-        'ERR_VERSION_MISMATCH',
-        `engine ${engineVersion} and client ${CLIENT_VERSION} are different major versions — ` +
-        `the protocol is incompatible. Update whichever is behind.`,
-      );
+  function buildBody(text, opts) {
+    if (typeof text !== 'string' || !text.trim()) {
+      throw new CorvvsError('ERR_BAD_REQUEST', 'text must be a non-empty string');
     }
-    if (engineMinor !== clientMinor) {
+    return {
+      text: text.trim(),
+      voice: opts.voice || defaultVoice,
+      speed: opts.speed ?? defaultSpeed,
+    };
+  }
+
+  async function getFallback() {
+    if (!fallbackPromise) {
       console.warn(
-        `[corvvs] engine ${engineVersion} / client ${CLIENT_VERSION} — minor version skew. ` +
-        `Probably fine, but update the engine if something behaves oddly.`,
+        `[corvvs] No engine at ${base} — falling back to CPU synthesis, which is ` +
+        `dramatically slower. Start the engine (\`npm start\` in the corvvs repo) ` +
+        `for GPU speed, or pass { fallback: false } to fail instead.`,
       );
+      // Cache the in-flight promise, not the resolved value — two calls racing before
+      // the first resolves must share one load rather than each loading their own
+      // ~90MB model. Reset on failure so a later call gets to retry.
+      fallbackPromise = createFallback().catch((err) => {
+        fallbackPromise = null;
+        throw err;
+      });
     }
+    return fallbackPromise;
   }
 
   return {
@@ -108,15 +151,7 @@ export function corvvs(options = {}) {
      * @returns {Promise<Buffer>}
      */
     async speak(text, opts = {}) {
-      if (typeof text !== 'string' || !text.trim()) {
-        throw new CorvvsError('ERR_BAD_REQUEST', 'text must be a non-empty string');
-      }
-
-      const body = {
-        text: text.trim(),
-        voice: opts.voice || defaultVoice,
-        speed: opts.speed ?? defaultSpeed,
-      };
+      const body = buildBody(text, opts);
 
       try {
         const response = await request('/synthesize', {
@@ -127,20 +162,76 @@ export function corvvs(options = {}) {
         return Buffer.from(await response.arrayBuffer());
       } catch (err) {
         if (err.code !== 'ERR_UNREACHABLE' || !fallback) throw err;
-
-        // No engine. Fall back to running the same model on the CPU in this process:
-        // correct audio, ~170x slower. Loud, because a caller who thinks they're on a
-        // GPU and isn't will otherwise just conclude CORVVS is slow.
-        if (!fallbackEngine) {
-          console.warn(
-            `[corvvs] No engine at ${base} — falling back to CPU synthesis, which is ` +
-            `dramatically slower. Start the engine (\`npm start\` in the corvvs repo) ` +
-            `for GPU speed, or pass { fallback: false } to fail instead.`,
-          );
-          fallbackEngine = await createFallback();
-        }
-        return fallbackEngine.speak(body.text, body.voice, body.speed);
+        const engine = await getFallback();
+        return engine.speak(body.text, body.voice, body.speed);
       }
+    },
+
+    /**
+     * Synthesizes speech incrementally, yielding each clip as soon as it's ready rather
+     * than waiting for the whole text. Backed by `POST /synthesize/stream` — see
+     * docs/protocol.md for the wire framing.
+     *
+     * Each yielded chunk is NOT one sentence — it's however much text Kokoro's own
+     * pipeline decided to batch together (measured: anywhere from one to several
+     * sentences per chunk). Use `split()` and call `speak()` per sentence if you need
+     * finer-grained control than that.
+     *
+     * Falls back the same way `speak()` does when no engine is reachable, but the CPU
+     * fallback can't stream: it synthesizes the whole text at once and yields a single
+     * chunk. Callers that care about the difference should check `available()` first.
+     *
+     * @param {string} text
+     * @param {{ voice?: string, speed?: number }} [opts]
+     * @returns {AsyncGenerator<{ text: string, audio: Buffer }>}
+     */
+    async *speakStream(text, opts = {}) {
+      const body = buildBody(text, opts);
+
+      let response;
+      try {
+        response = await request('/synthesize/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        if (err.code !== 'ERR_UNREACHABLE' || !fallback) throw err;
+        const engine = await getFallback();
+        yield { text: body.text, audio: await engine.speak(body.text, body.voice, body.speed) };
+        return;
+      }
+
+      let buf = Buffer.alloc(0);
+      for await (const chunk of response.body) {
+        buf = Buffer.concat([buf, Buffer.from(chunk)]);
+
+        // A frame is: u32 metaLen, meta JSON, u32 wavLen, wav bytes. Drain as many
+        // complete frames as the buffer currently holds.
+        while (buf.length >= 4) {
+          const metaLen = buf.readUInt32BE(0);
+          if (buf.length < 4 + metaLen + 4) break;
+          const meta = JSON.parse(buf.subarray(4, 4 + metaLen).toString('utf8'));
+          const wavLenOffset = 4 + metaLen;
+          const wavLen = buf.readUInt32BE(wavLenOffset);
+          const wavStart = wavLenOffset + 4;
+          if (buf.length < wavStart + wavLen) break;
+
+          yield { text: meta.text, audio: Buffer.from(buf.subarray(wavStart, wavStart + wavLen)) };
+          buf = buf.subarray(wavStart + wavLen);
+        }
+      }
+    },
+
+    /**
+     * Splits text into TTS-sized sentences — see split.js. Handy for pipelining a long
+     * document through speak()/speakStream() without writing your own splitter.
+     *
+     * @param {string} text
+     * @returns {string[]}
+     */
+    split(text) {
+      return splitSentences(text);
     },
 
     /**
@@ -164,9 +255,7 @@ export function corvvs(options = {}) {
      */
     async health() {
       const response = await request('/health');
-      const payload = await response.json();
-      await checkVersion(payload.version);
-      return payload;
+      return response.json();
     },
 
     /**
@@ -190,4 +279,5 @@ export function corvvs(options = {}) {
 }
 
 export { CorvvsError };
+export { splitSentences } from './split.js';
 export default corvvs;

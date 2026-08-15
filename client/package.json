@@ -4,18 +4,23 @@
   "description": "Fast, local, private text-to-speech — Kokoro-82M on your own GPU, one install per machine, shared by every project on it.",
   "type": "module",
   "main": "./src/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": "./src/index.js"
   },
   "files": [
     "src/",
-    "README.md"
+    "dist/",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build:types": "tsc",
+    "prepublishOnly": "npm run build:types"
   },
   "keywords": [
     "tts",
@@ -35,5 +40,8 @@
   "homepage": "https://github.com/magus-mechanicus/corvvs#readme",
   "optionalDependencies": {
     "kokoro-js": "^1.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
   }
 }

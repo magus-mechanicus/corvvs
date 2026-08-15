@@ -55,6 +55,40 @@ corvvs({ url: 'https://…', key: '…' });           // hosted
 
 ### `tts.speak(text, { voice?, speed? })` → `Promise<Buffer>`
 
+### `tts.speakStream(text, { voice?, speed? })` → `AsyncGenerator<{ text, audio }>`
+
+Yields clips as soon as they're ready instead of waiting for the whole text:
+
+```js
+for await (const { text, audio } of tts.speakStream(longArticle)) {
+  console.log('now playing:', text);
+  await play(audio); // however your app plays a WAV Buffer
+}
+```
+
+**A yielded chunk is not one sentence.** Kokoro's own pipeline decides chunk boundaries
+by an internal length budget, not punctuation — measured in this repo, anywhere from one
+to several sentences came back per chunk. If you need one chunk per sentence
+specifically, use `tts.split()` and call `speak()` per sentence instead.
+
+Only the engine actually streams. If there's no engine and the CPU fallback kicks in,
+`speakStream` still works — it just synthesizes the whole text up front and yields it as
+one chunk, since `kokoro-js` has no equivalent streaming mode wired up here. Check
+`tts.available()` first if your app needs to know which behavior it's getting.
+
+### `tts.split(text)` → `string[]`
+
+A sentence splitter, good enough for chunking text before `speak()`/`speakStream()` —
+not a linguistic tokenizer. Handles common abbreviations (`Dr.`, `etc.`) and decimals
+(`3.14`) without splitting on them; doesn't special-case runs of initials (`J. K.
+Rowling` will over-split).
+
+```js
+for (const sentence of tts.split(article)) {
+  await tts.speak(sentence);
+}
+```
+
 ### `tts.voices()` → `Promise<Voice[]>`
 
 Each voice carries the model author's own quality `grade`. The roster is long but only a
@@ -88,19 +122,21 @@ try {
 }
 ```
 
-`ERR_UNREACHABLE` · `ERR_VERSION_MISMATCH` · `ERR_NO_FALLBACK` · `ERR_BAD_REQUEST` ·
-`ERR_UNAUTHORIZED` · `ERR_TOO_LARGE` · `ERR_SYNTHESIS`
+`ERR_UNREACHABLE` · `ERR_TIMEOUT` · `ERR_VERSION_MISMATCH` · `ERR_NO_FALLBACK` ·
+`ERR_BAD_REQUEST` · `ERR_UNAUTHORIZED` · `ERR_TOO_LARGE` · `ERR_SYNTHESIS`
 
-Only `ERR_UNREACHABLE` triggers the fallback. A running-but-broken engine surfaces its
-error — silently becoming 170x slower is worse than failing.
+Only `ERR_UNREACHABLE` triggers the fallback. `ERR_TIMEOUT` deliberately does **not** —
+a slow-but-working engine isn't the same as no engine, and falling back would make a slow
+response look like an even slower one. Every other failure — including a
+running-but-broken engine — surfaces as-is rather than being papered over.
 
 ## Notes
 
-- Text over 5000 characters is rejected (`ERR_TOO_LARGE`). Split long documents into
-  sentences and pipeline them; the engine holds the model resident, so per-request
-  overhead is small.
-- Synthesis is not streamed yet — you get one complete WAV per call.
+- Text over 5000 characters is rejected (`ERR_TOO_LARGE`). Use `tts.split()` to chunk a
+  long document, or `speakStream()` to stream it sentence-by-sentence instead.
 - `kokoro-js` is an `optionalDependency` (it powers the CPU fallback). Skip it with
   `npm install corvvs --omit=optional` for an HTTP-only client.
+- Ships TypeScript declarations (`dist/index.d.ts`), generated from the JSDoc above via
+  `npm run build:types`.
 
 MIT.

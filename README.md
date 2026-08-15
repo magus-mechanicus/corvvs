@@ -102,6 +102,10 @@ const wav    = await tts.speak('Hello there', { voice: 'af_heart', speed: 1.0 })
 const voices = await tts.voices();
 const health = await tts.health();
 const up     = await tts.available();   // never throws
+
+for await (const { text, audio } of tts.speakStream(longArticle)) {
+  await play(audio); // plays as each chunk finishes, not after the whole document
+}
 ```
 
 The engine's location is always a parameter, never an assumption:
@@ -138,10 +142,13 @@ else's free GPU.
 
 Worth knowing before you build on it:
 
-- **No streaming.** `speak()` returns one complete WAV. Long text means waiting for all
-  of it before any of it plays. Split into sentences and pipeline the calls yourself for
-  now; a streaming endpoint is planned.
-- **Text is capped at 5000 characters** per request (`ERR_TOO_LARGE`).
+- **`speak()` is not streamed** — one request, one complete WAV, so long text means
+  waiting for all of it before any of it plays. `speakStream()` covers this when the
+  engine is running (clips playable as they arrive — though a "clip" is however much
+  text Kokoro's pipeline batched, not one sentence); the CPU fallback can't stream and
+  just yields the whole thing as a single chunk.
+- **Text is capped at 5000 characters** per request (`ERR_TOO_LARGE`). Use `tts.split()`
+  to chunk a longer document.
 - **English only.** The engine loads Kokoro's `a` (American English) pipeline. Other
   languages exist in the model but aren't wired up.
 - **Requests are serialised in practice.** The GPU processes one clip at a time;
@@ -161,7 +168,9 @@ engine/     Python — the Kokoro HTTP server
 client/     The `corvvs` npm package
   src/index.js    the client factory
   src/fallback.js in-process CPU synthesis
+  src/split.js    the sentence splitter
   src/errors.js   CorvvsError + code list
+  test/           node:test suite — runs against mock HTTP servers, no GPU needed
 app/        Rook, the tray app (not started)
 docs/       protocol.md — the wire contract
 scripts/    setup.mjs, start.mjs

@@ -17,6 +17,9 @@ engine/models/
 app/src-tauri/target/
 app/dist/
 
+# Generated TypeScript declarations — built by `npm run build:types`, not source
+client/dist/
+
 # Local config and secrets
 .env
 .env.local

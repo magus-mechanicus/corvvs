@@ -53,10 +53,13 @@ The PyTorch CUDA wheel didn't match your driver. Check what torch thinks:
 
 If `False`, reinstall torch against a different CUDA version — `cu128`, `cu126` and
 `cu121` are the usual candidates. See https://pytorch.org/get-started/locally/ for the
-build matching your driver:
+build matching your driver.
+
+`uv venv` environments don't come with pip seeded into them, so reinstall through `uv`
+rather than `python -m pip` (which will fail with *No module named pip*):
 
 ```bash
-.venv/Scripts/python -m pip install --force-reinstall torch --index-url https://download.pytorch.org/whl/cu126
+uv pip install --python engine/.venv/Scripts/python --force-reinstall torch --index-url https://download.pytorch.org/whl/cu126
 ```
 
 ### If you get `cpu` on Mac
@@ -71,7 +74,9 @@ broken install. Check:
 
 **This path has not yet been run on real Apple Silicon hardware** — it's derived from the
 `kokoro` package's documented device selection. Expect to shake out a bug or two the
-first time.
+first time. If `mps` comes back `False` on Apple Silicon, the same `uv pip install
+--force-reinstall` pattern above applies — swap the index URL and Windows path for
+`.venv/bin/python` and no index URL (see Setup, above).
 
 ## Running it directly
 
@@ -91,4 +96,14 @@ where only local processes can reach it.
 
 Bind anywhere else and the server **refuses to start** unless `CORVVS_TOKEN` is set —
 an unauthenticated TTS engine reachable from the network is an open invitation to burn
-someone else's GPU. That check is at the top of `server.py` and is deliberate.
+someone else's GPU. That check is at the top of `server.py` and is deliberate. Token
+comparison is constant-time (`hmac.compare_digest`), since this stops being purely a
+localhost-only concern the moment the engine is bound anywhere else.
+
+## Concurrency
+
+Every request that touches the model takes a single process-wide lock — `KPipeline` and
+the torch module underneath it aren't safe for concurrent forward passes. This costs
+nothing real: the GPU only runs one clip at a time regardless, so requests queue rather
+than racing. If you're pipelining several sentences at once, expect them to complete
+serially, not in parallel — that's expected, not a bug.

@@ -21,8 +21,15 @@ reachable by another machine must set a token.
 
 **CORS.** Browser clients need this; Node clients do not. The engine echoes
 `Access-Control-Allow-Origin` only for origins listed in `CORVVS_ALLOWED_ORIGINS`
-(comma-separated) and answers `OPTIONS` preflights. Unset means no CORS headers at all,
-which is the correct default for a machine that isn't running the extension.
+(comma-separated) and answers `OPTIONS` preflights with `Access-Control-Max-Age: 86400`,
+so a browser only preflights once a day rather than once per request. Unset means no CORS
+headers at all, which is the correct default for a machine that isn't running a browser
+client.
+
+**Versioning.** Every response — success or error — carries `X-Corvvs-Version`. The
+client checks it on every request (not only `/health`): a major-version mismatch throws
+immediately, since the engine and client are developed together in this repo and a
+mismatch means the protocol itself may have changed underneath one of them.
 
 ## `GET /health`
 
@@ -55,15 +62,53 @@ require an npm release.
 | Field | Required | Default |
 |---|---|---|
 | `text` | yes | — |
-| `voice` | no | `CORVVS_VOICE`, itself defaulting to `af_heart` |
+| `voice` | no | `CORVVS_VOICE`, itself defaulting to `af_heart` — must be a known id from `GET /voices`, or the request is rejected |
 | `speed` | no | `1.0` (range `0.5`–`2.0`) |
 
 Responds `200` with `Content-Type: audio/wav` and the raw bytes: 24 kHz, 16-bit PCM, mono.
 
-Synthesis is **not** streamed — the full clip is buffered and returned in one response.
-Fine for a sentence or a paragraph; for reading a long article the caller should split
-into sentences and pipeline the requests itself. Native streaming is a planned protocol
-addition (see below).
+The full clip is buffered and returned in one response — no partial results. Fine for a
+sentence or a paragraph; for a long document either split it yourself and pipeline the
+requests (see `corvvs.split()` in the client), or use `/synthesize/stream` below.
+
+## `POST /synthesize/stream`
+
+Same request body as `/synthesize`. Responds `200` with
+`Content-Type: application/x-corvvs-stream` and `Transfer-Encoding: chunked` — one frame
+per segment Kokoro's own pipeline yields, so playback can start before the rest of the
+text has synthesized.
+
+**A frame is not one sentence.** Kokoro's pipeline decides chunk boundaries with its own
+internal splitter, governed by a length budget rather than punctuation — measured in
+this repo, three short sentences came back as a single frame, while ~1700 characters of
+short sentences came back as four frames of roughly four sentences each. Treat a frame as
+"however much text Kokoro decided to batch," not as a sentence, a paragraph, or anything
+else semantically meaningful. If you need per-sentence chunks specifically, split the
+input yourself first (`corvvs.split()`) and call `/synthesize` once per sentence instead.
+
+Each frame is two length-prefixed parts back to back:
+
+```
+u32 metaLen (big-endian)
+metaLen bytes of JSON: { "text": "<the text this clip covers>" }
+u32 wavLen (big-endian)
+wavLen bytes of WAV audio (24 kHz, 16-bit PCM, mono)
+```
+
+Frames repeat until the chunked body ends. There is no separate terminator frame —
+end-of-stream is the end of the HTTP chunked encoding itself (a zero-length final chunk),
+same as any other chunked response.
+
+**Errors after the response has started can't be reported in-band.** By the time
+synthesis begins, the `200` and headers are already on the wire, so a mid-stream failure
+can only end the connection early — the engine logs it, but the client just sees a
+truncated stream. Validation (bad text, bad voice, bad speed, auth) happens *before*
+headers are sent and still returns a normal JSON error with the correct status code, same
+as `/synthesize`.
+
+The connection is closed after one stream (`Connection: close`) rather than kept alive —
+simpler and safer than reasoning about keep-alive framing around a hand-rolled chunked
+body.
 
 ## Errors
 
@@ -75,15 +120,23 @@ Non-2xx responses carry `Content-Type: application/json`:
 
 | Status | `code` | Meaning |
 |---|---|---|
-| 400 | `ERR_BAD_REQUEST` | missing/empty `text`, `speed` out of range, malformed JSON |
+| 400 | `ERR_BAD_REQUEST` | missing/empty `text`, unknown `voice`, `speed` out of range or not a number, malformed JSON |
 | 401 | `ERR_UNAUTHORIZED` | `CORVVS_TOKEN` set, token missing or wrong |
 | 404 | `ERR_NOT_FOUND` | unknown path |
 | 413 | `ERR_TOO_LARGE` | `text` over `CORVVS_MAX_CHARS` (default 5000) |
 | 500 | `ERR_SYNTHESIS` | the model raised during generation |
 
-The client maps a connection failure (engine not running) to its `kokoro-js` fallback
-rather than an error. Every other failure propagates — a running-but-broken engine is a
-real problem and shouldn't be masked by silently getting 170x slower.
+These are the engine's codes, sent as the JSON body's `code` field. The client also
+raises purely client-side codes that never come from the engine: `ERR_UNREACHABLE` (no
+connection could be made at all), `ERR_TIMEOUT` (a connection was made but nothing came
+back within the configured timeout), `ERR_VERSION_MISMATCH`, and `ERR_NO_FALLBACK`. See
+`client/src/errors.js` for the authoritative list.
+
+The client maps **only** `ERR_UNREACHABLE` to its `kokoro-js` fallback. Everything else —
+including `ERR_TIMEOUT` — propagates as an error. This is deliberate: a slow-but-working
+engine is not the same condition as no engine at all, and silently downgrading a timeout
+to the ~170x-slower CPU path would make a slow response look like an even slower one
+instead of surfacing the real problem.
 
 ## Configuration
 
@@ -108,8 +161,5 @@ minor-version mismatch and refuses on a major one.
 
 Not implemented; recorded here so the shape is agreed before either side builds it.
 
-- **`POST /synthesize/stream`** — chunked response, one WAV frame per sentence, so long
-  text starts playing before it finishes generating. The single biggest quality-of-life
-  gap for anything that reads a long document aloud.
 - **`GET /models`** — once the engine hosts more than Kokoro (Whisper for STT is the
   obvious second occupant of the same PyTorch runtime).
