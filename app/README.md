@@ -49,6 +49,7 @@ install first.
   runs it and renders the output.
 - **Auto-update.** Tauri has an updater plugin, but it needs a signing key and a release
   feed. Probably worth it before any non-technical user installs this; not before.
-- **Port conflicts.** If VESTA's own Kokoro server is still running on 8765, Rook needs to
-  detect that and say so plainly rather than failing to bind. Goes away once VESTA is
-  migrated to consume `corvvs`.
+- **Port conflicts.** If something else already holds 8765 — including an engine started
+  by hand in a terminal — Rook needs to detect that and say so plainly rather than dying
+  on a failed bind. Checking the port before paying the model's ~15 s load time is the
+  cheap version of this.

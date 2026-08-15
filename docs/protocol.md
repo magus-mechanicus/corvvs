@@ -19,7 +19,7 @@ the engine is open — acceptable bound to `127.0.0.1` on a single-user machine,
 reason the default bind address is loopback rather than `0.0.0.0`. Any deployment
 reachable by another machine must set a token.
 
-**CORS.** Browser clients (Kestrel) need this; Node clients do not. The engine echoes
+**CORS.** Browser clients need this; Node clients do not. The engine echoes
 `Access-Control-Allow-Origin` only for origins listed in `CORVVS_ALLOWED_ORIGINS`
 (comma-separated) and answers `OPTIONS` preflights. Unset means no CORS headers at all,
 which is the correct default for a machine that isn't running the extension.
@@ -110,6 +110,6 @@ Not implemented; recorded here so the shape is agreed before either side builds 
 
 - **`POST /synthesize/stream`** — chunked response, one WAV frame per sentence, so long
   text starts playing before it finishes generating. The single biggest quality-of-life
-  gap for Kestrel's read-an-article case.
+  gap for anything that reads a long document aloud.
 - **`GET /models`** — once the engine hosts more than Kokoro (Whisper for STT is the
   obvious second occupant of the same PyTorch runtime).
