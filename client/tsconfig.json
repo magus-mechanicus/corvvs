@@ -5,6 +5,7 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
+    "rootDir": "src",
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "target": "es2022",
