@@ -1,0 +1,39 @@
+{
+  "name": "corvvs",
+  "version": "0.1.0",
+  "description": "Fast, local, private text-to-speech — Kokoro-82M on your own GPU, one install per machine, shared by every project on it.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "kokoro",
+    "speech-synthesis",
+    "local-first",
+    "offline",
+    "self-hosted"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/magus-mechanicus/corvvs.git",
+    "directory": "client"
+  },
+  "homepage": "https://github.com/magus-mechanicus/corvvs#readme",
+  "optionalDependencies": {
+    "kokoro-js": "^1.2.1"
+  }
+}

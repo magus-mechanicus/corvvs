@@ -1,0 +1,30 @@
+# Node
+node_modules/
+*.log
+npm-debug.log*
+
+# Python engine — created by `npm run setup`, several GB, never committed
+engine/.venv/
+engine/.python-version
+__pycache__/
+*.py[cod]
+
+# Model weights, downloaded on first run
+engine/models/
+.cache/
+
+# Rust / Tauri build output
+app/src-tauri/target/
+app/dist/
+
+# Local config and secrets
+.env
+.env.local
+corvvs.token
+
+# Scratch notes, not part of the project
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db

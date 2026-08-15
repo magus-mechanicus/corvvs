@@ -1,0 +1,7 @@
+# PyTorch is deliberately NOT listed here — the correct wheel depends on the machine
+# (CUDA version on Windows/NVIDIA, plain PyPI on Apple Silicon), so scripts/setup.mjs
+# installs it first from the right index. Everything below is platform-independent.
+
+kokoro>=0.9.4
+soundfile>=0.12.1
+numpy>=1.26
