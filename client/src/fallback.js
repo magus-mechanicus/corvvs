@@ -4,8 +4,8 @@
  * Runs the same Kokoro-82M weights through `kokoro-js` (ONNX) instead of the engine's
  * PyTorch build. Identical voices, near-identical audio — but on the CPU, which is
  * roughly 170x slower (~29 s/sentence vs ~0.17 s on a GPU). It exists so that
- * `npm install corvvs` does something useful on its own, and so a project doesn't
- * hard-fail on a machine where nobody has installed the engine yet.
+ * `npm install @adeptvs_mechanicvs/corvvs` does something useful on its own, and so a
+ * project doesn't hard-fail on a machine where nobody has installed the engine yet.
  *
  * `kokoro-js` is an optionalDependency: present by default, but `npm install
  * --omit=optional` gives you the thin HTTP-only client if you'd rather not carry the

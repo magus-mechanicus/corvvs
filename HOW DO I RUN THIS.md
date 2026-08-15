@@ -94,7 +94,7 @@ run `node try.mjs`:
 
 ```js
 import { corvvs } from 'z:/AI-PROJECTS/Corvvs/client/src/index.js';
-// once published: import { corvvs } from 'corvvs';
+// once published: import { corvvs } from '@adeptvs_mechanicvs/corvvs';
 
 const tts = corvvs();
 const wav = await tts.speak('Testing from Node directly.');
@@ -128,23 +128,47 @@ backgrounded), find and kill the Python process:
 - **Windows:** `tasklist | findstr python` → `taskkill /F /PID <pid>`
 - **Mac:** `pkill -f server.py`
 
-## Using it from another project, right now (before it's published to npm)
+## Using it from another project, right now (before publishing, or instead of it)
 
-The `corvvs` name isn't published to the npm registry yet — see the note at the bottom.
-Until then, point a project at this folder directly with a local `file:` dependency:
+Two ways, and the package name situation affects both — see the note below.
 
+**Option A — `npm link`, for active development** (edit corvvs, see it reflected
+immediately, no reinstall):
+```bash
+# once, in this repo
+cd client
+npm link
+
+# in the other project
+npm link @adeptvs_mechanicvs/corvvs
+```
+
+**Option B — a local `file:` dependency**, if you'd rather not use a link:
 ```bash
 # from the other project's directory
 npm install file:../Corvvs/client
 ```
 
+Either way, the import is the same — `package.json`'s `"name"` field decides the import
+specifier regardless of *how* the package got installed (link, local path, or registry):
 ```js
-import { corvvs } from 'corvvs';
+import { corvvs } from '@adeptvs_mechanicvs/corvvs';
 const tts = corvvs(); // talks to the engine you started with `npm start` above
 ```
 
-This is exactly how VESTA's migration should work for now — see
-`VESTA IMPLEMENTATION GUIDE.md` in this same folder.
+This is exactly how VESTA's migration should work — see `VESTA IMPLEMENTATION GUIDE.md`
+in this same folder.
+
+## The package name — not just "corvvs"
+
+First publish attempt got rejected: npm blocks a plain `corvvs` as too similar to the
+widely-used `cors` package (an anti-typosquatting check, not a real conflict). Fix:
+publish under a scope instead — `@adeptvs_mechanicvs/corvvs`. `client/package.json` is
+already set to this name, with `publishConfig.access: "public"` set so you don't need to
+remember `--access=public` by hand each time (scoped packages default to private).
+
+The exported function is still called `corvvs` — only the string you install/import by
+changed.
 
 ## Publishing to npm (a manual step, not something I can do for you)
 
@@ -161,10 +185,10 @@ npm publish
 `client/package.json`'s `"files"` field already restricts what gets published to
 `src/`, `dist/`, `README.md`, and `LICENSE` — so publishing from this monorepo does
 **not** drag in `engine/` (the multi-GB Python side) or `app/` (Rook, whenever it
-exists). `npm install corvvs` will only ever download the small client package, no
-matter how large the rest of the repo grows. That was the actual goal behind "only
-download the appropriate files," and it's already satisfied by this setup — nothing
-further needs to change for it.
+exists). `npm install @adeptvs_mechanicvs/corvvs` will only ever download the small
+client package, no matter how large the rest of the repo grows. That was the actual goal
+behind "only download the appropriate files," and it's already satisfied by this setup —
+nothing further needs to change for it.
 
 ## Pushing this repo to GitHub
 

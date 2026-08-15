@@ -3,12 +3,16 @@
 Fast, local, private text-to-speech. [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
 on your own GPU — no API keys, no per-character billing, nothing leaves the machine.
 
+Published as `@adeptvs_mechanicvs/corvvs` — npm blocks a plain `corvvs` as too similar to
+the widely-used `cors` package. The function you actually call is still named `corvvs`;
+only the install/import specifier carries the scope.
+
 ```bash
-npm install corvvs
+npm install @adeptvs_mechanicvs/corvvs
 ```
 
 ```js
-import { corvvs } from 'corvvs';
+import { corvvs } from '@adeptvs_mechanicvs/corvvs';
 
 const tts = corvvs();
 const wav = await tts.speak('Hello there', { voice: 'af_heart' });
@@ -113,7 +117,7 @@ rather than discovering the answer mid-synthesis.
 Every failure is a `CorvvsError` with a stable `code`:
 
 ```js
-import { CorvvsError } from 'corvvs';
+import { CorvvsError } from '@adeptvs_mechanicvs/corvvs';
 
 try {
   await tts.speak(text);
@@ -135,7 +139,7 @@ running-but-broken engine — surfaces as-is rather than being papered over.
 - Text over 5000 characters is rejected (`ERR_TOO_LARGE`). Use `tts.split()` to chunk a
   long document, or `speakStream()` to stream it sentence-by-sentence instead.
 - `kokoro-js` is an `optionalDependency` (it powers the CPU fallback). Skip it with
-  `npm install corvvs --omit=optional` for an HTTP-only client.
+  `npm install @adeptvs_mechanicvs/corvvs --omit=optional` for an HTTP-only client.
 - Ships TypeScript declarations (`dist/index.d.ts`), generated from the JSDoc above via
   `npm run build:types`.
 

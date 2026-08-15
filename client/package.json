@@ -1,5 +1,5 @@
 {
-  "name": "corvvs",
+  "name": "@adeptvs_mechanicvs/corvvs",
   "version": "0.1.0",
   "description": "Fast, local, private text-to-speech — Kokoro-82M on your own GPU, one install per machine, shared by every project on it.",
   "type": "module",
@@ -32,6 +32,9 @@
     "self-hosted"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/magus-mechanicus/corvvs.git",

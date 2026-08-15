@@ -8,11 +8,15 @@ exposes it over plain HTTP on localhost. Install it once per machine; every proj
 that machine shares the one running model.
 
 ```js
-import { corvvs } from 'corvvs';
+import { corvvs } from '@adeptvs_mechanicvs/corvvs';
 
 const tts = corvvs();
 const wav = await tts.speak('Hello there', { voice: 'af_heart' });
 ```
+
+*(Published as a scoped package — npm blocks a plain `corvvs` as too similar to the
+popular `cors` package. The exported function is still called `corvvs`; only the install
+specifier is scoped.)*
 
 ## Why
 
@@ -37,7 +41,7 @@ other, so they version and release together.
 
 ```
    Your project
-   │   import { corvvs } from 'corvvs'
+   │   import { corvvs } from '@adeptvs_mechanicvs/corvvs'
    ▼
    client/  (npm)  ──── HTTP ────▶  engine/  (Python + GPU)
                                       ▲
@@ -58,8 +62,8 @@ Same model, same voices, same audio. The engine exists purely to reach the GPU:
 while PyTorch's CUDA and MPS backends don't.
 
 The client falls back to `kokoro-js` automatically when no engine is reachable, so
-`npm install corvvs` works on its own — just slowly, and it says so. Installing the
-engine makes it fast.
+`npm install @adeptvs_mechanicvs/corvvs` works on its own — just slowly, and it says so.
+Installing the engine makes it fast.
 
 ## Setup
 
@@ -91,11 +95,11 @@ rather than reporting a cheerful success.
 ## Using it
 
 ```bash
-npm install corvvs
+npm install @adeptvs_mechanicvs/corvvs
 ```
 
 ```js
-import { corvvs } from 'corvvs';
+import { corvvs } from '@adeptvs_mechanicvs/corvvs';
 
 const tts = corvvs();
 const wav    = await tts.speak('Hello there', { voice: 'af_heart', speed: 1.0 });
