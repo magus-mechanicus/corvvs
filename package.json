@@ -8,8 +8,9 @@
     "client"
   ],
   "scripts": {
-    "setup": "node scripts/setup.mjs",
     "start": "node scripts/start.mjs",
+    "nvm-setup": "nvm use 25",
+    "setup": "node scripts/setup.mjs",
     "health": "node -e \"fetch('http://127.0.0.1:8765/health').then(r=>r.json()).then(h=>console.log(h)).catch(()=>console.error('engine not running'))\"",
     "test": "npm test --workspace client"
   },
